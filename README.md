@@ -12,6 +12,9 @@ Create the folders we'll use:
 mkdir src models data
 ```
 
+`mkdir` just creates empty folders — nothing Python- or ML-specific here,
+same command you've always used.
+
 - `src/` — your Python scripts
 - `models/` — saved model files (the "artifacts")
 - `data/` — datasets (empty for now, we'll use a built-in one first)
@@ -22,26 +25,53 @@ mkdir src models data
 git init
 ```
 
-Why: you already know git from DevOps. Every step from here on (code, later
-Dockerfile, later CI/CD config) should be tracked from the start.
+Turns this folder into a git repository (creates a hidden `.git/` folder that
+tracks history). Same command, same meaning as in any DevOps repo — nothing
+ML-specific about it. Every step from here on (code, later Dockerfile, later
+CI/CD config) should be tracked from the start.
 
 ## 2. Virtual environment
-
-Python projects isolate their dependencies per-project instead of installing
-globally — this avoids version conflicts between projects.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-You'll know it worked because your shell prompt gets a `(.venv)` prefix.
-You need to run the `source` command in every new terminal session/tab you use
-for this project.
+This is **not** like Docker, even though "isolated environment" sounds
+similar — there's no separate filesystem or process. Here's what actually
+happens:
+
+- `python3 -m venv .venv` creates a folder named `.venv/` containing a private
+  copy of the Python interpreter plus a `bin/` directory with `python`, `pip`,
+  and an `activate` script inside it. This step just creates files — nothing
+  runs or activates yet.
+- `source .venv/bin/activate` runs that script **in your current shell**, and
+  the only thing it does is change your shell's `PATH` variable so that typing
+  `python` or `pip` now resolves to the copies inside `.venv/bin/` instead of
+  your system-wide Python. You are still in the same folder, same shell, same
+  everything else — nothing is isolated except *which python/pip binary gets
+  used* and *where pip installs packages* (into `.venv/lib/...` instead of
+  system-wide).
+- Why `source` and not just running the script? Environment variable changes
+  only stick in the shell that sets them. Running the script normally would
+  execute it in a disposable subshell, and the `PATH` change would vanish the
+  instant it finished. `source` runs it in your actual terminal session so the
+  change persists.
+- You'll know it worked because your prompt gets a `(.venv)` prefix.
+- To undo it later: run `deactivate` — restores your original `PATH`.
+- You need to re-run the `source` command in every *new* terminal tab/window
+  you open for this project (activation doesn't persist across sessions).
+
+Why bother at all: without this, `pip install` would install packages
+system-wide, and different projects on your machine could end up needing
+conflicting versions of the same package. The venv keeps this project's
+packages in `.venv/lib/`, separate from every other project's.
 
 ## 3. Dependencies
 
-Create a file named `requirements.txt` in the project root with this content:
+Create a file named `requirements.txt` in the project root with this content
+(a plain text file, one package name per line — not a script, doesn't need to
+be executable):
 
 ```
 pandas
@@ -54,11 +84,15 @@ joblib
 - `scikit-learn` — the ML library (models, train/test split, metrics)
 - `joblib` — saves/loads a trained model to/from disk
 
-Install them:
+Install them (make sure your `(.venv)` prompt prefix is showing first, so
+these install into the venv and not system-wide):
 
 ```bash
 pip install -r requirements.txt
 ```
+
+`-r requirements.txt` tells `pip` to read that file and install every package
+listed in it, rather than naming packages one at a time on the command line.
 
 ## 4. Write `src/train.py`
 
@@ -99,9 +133,16 @@ print("saved model to models/model.joblib")
 
 ## 5. Run it
 
+Make sure `(.venv)` is still showing in your prompt (re-activate with the
+`source` command from step 2 if you opened a new terminal), then:
+
 ```bash
 python src/train.py
 ```
+
+This just tells the Python interpreter to execute that file top to bottom —
+same as running any script. Since you activated the venv, this runs
+`.venv/bin/python`, which has access to the packages you installed in step 3.
 
 Expected: it prints an accuracy (should be ~0.95+) and a classification
 report, and creates `models/model.joblib`.
