@@ -154,9 +154,151 @@ git add .
 git commit -m "Step 1: train and save a baseline model"
 ```
 
+---
+
+# Milestone 2: Track your experiment with MLflow
+
+## Why
+
+Right now `train.py` just `print()`s the accuracy. If you change
+`n_estimators` from 200 to 100 tomorrow, or swap in a different model, you'll
+have no record of what you tried before or what score it got — you'd have to
+re-run old versions to compare. That's fine for one script, but real ML work
+means dozens of tweaks (parameters, features, algorithms), and "which run
+produced the model in production, with what settings" needs to be answerable
+without guessing.
+
+MLflow is a tool that logs each training run — its parameters, its metrics,
+and the model artifact itself — so you can browse and compare runs later
+through a UI or query them programmatically. Think of it as the ML
+equivalent of a CI system's build history: every run is kept, timestamped,
+and inspectable, instead of being overwritten by the next one.
+
+## 1. Add the dependency
+
+Add a line to your `requirements.txt`:
+
+```
+mlflow
+```
+
+Then install it (venv still active):
+
+```bash
+pip install -r requirements.txt
+```
+
+## 2. Modify `src/train.py`
+
+Add the import at the top:
+
+```python
+import mlflow
+import mlflow.sklearn
+```
+
+Wrap the training/logging portion in an MLflow run. Here's the full updated
+file — replace what you have with this:
+
+```python
+import mlflow
+import mlflow.sklearn
+from sklearn.datasets import load_breast_cancer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
+
+data = load_breast_cancer(as_frame=True)
+X, y = data.data, data.target
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
+
+n_estimators = 200
+random_state = 42
+
+# Everything inside this block is grouped into one trackable "run".
+with mlflow.start_run():
+    model = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state)
+    model.fit(X_train, y_train)
+
+    preds = model.predict(X_test)
+    accuracy = accuracy_score(y_test, preds)
+    print(f"accuracy: {accuracy:.4f}")
+    print(classification_report(y_test, preds))
+
+    # Log inputs (params) and output (metric) so you can compare runs later.
+    mlflow.log_param("n_estimators", n_estimators)
+    mlflow.log_param("random_state", random_state)
+    mlflow.log_metric("accuracy", accuracy)
+
+    # MLflow's own model logging replaces the joblib.dump from before —
+    # it saves the model plus metadata (library version, input/output shape)
+    # in a self-describing folder instead of a bare file.
+    mlflow.sklearn.log_model(model, "model")
+```
+
+Notice `joblib` is no longer needed for this file — `mlflow.sklearn.log_model`
+replaces `joblib.dump`. You can remove the `joblib` import and the
+`models/model.joblib` line from your old version. (`joblib` stays in
+`requirements.txt` since MLflow uses it internally, but you won't call it
+directly anymore.)
+
+## 3. Run it
+
+```bash
+python src/train.py
+```
+
+You'll notice a new `mlruns/` folder appear in your project root — that's
+MLflow's local tracking store (params, metrics, and model files for every run
+you've done, organized by run ID).
+
+## 4. View the results
+
+```bash
+mlflow ui
+```
+
+Open the URL it prints (usually `http://127.0.0.1:5000`) in your browser.
+You'll see a table of runs — each row is one execution of `train.py`, with
+columns for the params and metrics you logged. Click a run to see the full
+detail, including the logged model artifact.
+
+Try this to see the point of all this: change `n_estimators = 200` to
+`n_estimators = 50` in `train.py`, run it again, refresh the MLflow UI — now
+you have two runs side by side and can compare accuracy against the
+parameter that changed, instead of trusting your memory.
+
+## 5. Keep `mlruns/` out of git
+
+`mlruns/` is local run data — generated output, not source code — same
+category as `.venv/` or `models/`. Create a file named `.gitignore` in the
+project root with:
+
+```
+.venv/
+mlruns/
+models/*.joblib
+```
+
+Note for later: in a real team setting, MLflow usually points at a shared
+remote tracking server (so everyone's runs land in one place) instead of this
+local `mlruns/` folder — that's a config change for another day, not
+something to worry about yet.
+
+## 6. Commit
+
+```bash
+git add .
+git commit -m "Milestone 2: track training runs with MLflow"
+```
+
 ## What's next
 
-Once this runs cleanly and you understand every line (ask me about any of
-it!), the next milestone is **experiment tracking with MLflow** — logging
-params/metrics instead of just printing them. Come back and say "let's do
-step 3" when you're ready.
+Once you've compared at least two runs in the MLflow UI and it makes sense,
+the next milestone is **serving the model** — wrapping it in a small API
+with FastAPI so something else (an app, a script, `curl`) can send in data
+and get a prediction back. Come back and say "let's do the next step" when
+you're ready.
